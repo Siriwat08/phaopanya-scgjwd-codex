@@ -100,6 +100,7 @@ function extractGeoFromAddress(rawText) {
  * เพื่อเติมข้อมูลอัตโนมัติ
  */
 function populateGeoMetadata() {
+  try {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = ss.getSheetByName(SHEET.SYS_TH_GEO);
   if (!sheet) return;
@@ -161,4 +162,8 @@ function populateGeoMetadata() {
   sheet.getRange(2, 1, updatedRows.length, updatedRows[0].length).setValues(updatedRows);
   logInfo('GeoMigration', 'เติมข้อมูล Metadata เสร็จสิ้น!');
   safeAlert_('✅ เติมข้อมูล Geo Metadata สำเร็จ!\nกรุณากด "สร้าง Geo Dictionary" อีกครั้งเพื่อใช้งาน');
+  } catch (err) {
+    logError('GeoMigration', `populateGeoMetadata ล้มเหลว: ${err.message}`);
+    safeAlert_(`❌ populateGeoMetadata ล้มเหลว: ${err.message}`);
+  }
 }

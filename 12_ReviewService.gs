@@ -152,9 +152,10 @@ function enqueueReview(srcObj, decision, personResult, placeResult, geoResult) {
  *            เดิม: เช็ค === 'In_Review' ทำให้ Pending ถูกข้าม
  */
 function applyAllPendingDecisions() {
-  const ss    = SpreadsheetApp.getActiveSpreadsheet();
-  const sheet = ss.getSheetByName(SHEET.Q_REVIEW);
-  if (!sheet || sheet.getLastRow() < 2) return;
+  try {
+    const ss    = SpreadsheetApp.getActiveSpreadsheet();
+    const sheet = ss.getSheetByName(SHEET.Q_REVIEW);
+    if (!sheet || sheet.getLastRow() < 2) return;
 
   const data    = sheet.getRange(2, 1, sheet.getLastRow() - 1,
                    SCHEMA[SHEET.Q_REVIEW].length).getValues();
@@ -177,8 +178,13 @@ function applyAllPendingDecisions() {
     }
   }
 
-  logInfo('ReviewService', `applyAllPendingDecisions: ประมวลผล ${processed} รายการ`);
-  return processed;
+    logInfo('ReviewService', `applyAllPendingDecisions: ประมวลผล ${processed} รายการ`);
+    return processed;
+  } catch (err) {
+    logError('ReviewService', `applyAllPendingDecisions ล้มเหลว: ${err.message}`);
+    SpreadsheetApp.getUi().alert(`❌ applyAllPendingDecisions ล้มเหลว: ${err.message}`);
+    return 0;
+  }
 }
 
 // ============================================================

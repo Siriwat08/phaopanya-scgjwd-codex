@@ -320,6 +320,7 @@ function runPhase2QualityGate() {
  * [FIX v5.4.000] เพิ่มการเขียน Global Alias ลง M_ALIAS ควบคู่กับ M_PERSON_ALIAS
  */
 function generatePersonAliasesFromHistory() {
+  try {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const factSheet = ss.getSheetByName(SHEET.FACT_DELIVERY);
   const aliasSheet = ss.getSheetByName(SHEET.M_PERSON_ALIAS);
@@ -367,8 +368,14 @@ function generatePersonAliasesFromHistory() {
   const newAliasRows = [];
   const globalAliasCalls = []; // [FIX v5.4.000] เก็บข้อมูลสำหรับเขียน M_ALIAS
   let addedCount = 0;
+  const startedAt = Date.now();
+  const timeLimit = Number(AI_CONFIG && AI_CONFIG.TIME_LIMIT_MS) || 300000;
+  const softDeadline = startedAt + Math.max(60000, timeLimit - 20000);
 
-  factData.forEach(r => {
+  factData.forEach((r, idx) => {
+    if (idx % 100 === 0 && Date.now() > softDeadline) {
+      throw new Error('generatePersonAliasesFromHistory timeout guard at index=' + idx);
+    }
     const pId = String(r[FACT_IDX.PERSON_ID] || '').trim();
     const rawName = String(r[FACT_IDX.SHIP_TO_NAME] || '').trim();
     if (!pId || !rawName) return;
@@ -409,20 +416,13 @@ function generatePersonAliasesFromHistory() {
 
   if (newAliasRows.length > 0) {
     // บันทึกแบบ Batch
-    aliasSheet.getRange(aliasSheet.getLastRow() + 1, 1, newAliasRows.length, 6).setValues(newAliasRows);
+    aliasSheet.getRange(
+      aliasSheet.getLastRow() + 1, 1, newAliasRows.length, SCHEMA[SHEET.M_PERSON_ALIAS].length
+    ).setValues(newAliasRows);
     invalidateAliasCache_();
 
-    // [FIX v5.4.000] เขียน Global Alias ลง M_ALIAS
+    // [v5.4.003] Single Writer: ไม่เขียน M_ALIAS ที่นี่
     let globalAliasCount = 0;
-    if (typeof createGlobalAlias === 'function') {
-      globalAliasCalls.forEach(call => {
-        const result = createGlobalAlias(
-          call.masterUuid, call.variantName, call.entityType,
-          call.confidence, call.source
-        );
-        if (result) globalAliasCount++;
-      });
-    }
 
     SpreadsheetApp.getUi().alert(
       `✅ สร้าง Alias อัตโนมัติสำเร็จ!\n` +
@@ -431,5 +431,9 @@ function generatePersonAliasesFromHistory() {
     );
   } else {
     SpreadsheetApp.getUi().alert('ℹ️ ตรวจสอบเรียบร้อย: ข้อมูล Alias ในระบบอัปเดตครับถ้วนแล้ว ไม่มีรายการใหม่');
+  }
+  } catch (err) {
+    logError('Hardening', `generatePersonAliasesFromHistory ล้มเหลว: ${err.message}`);
+    SpreadsheetApp.getUi().alert(`❌ generatePersonAliasesFromHistory ล้มเหลว: ${err.message}`);
   }
 }

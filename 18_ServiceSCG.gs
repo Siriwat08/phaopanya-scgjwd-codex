@@ -191,9 +191,9 @@ function fetchDataFromSCGJWD() {
 
     if (allFlatData.length > 0) {  
       dataSheet.getRange(2, 1, allFlatData.length, headers.length).setValues(allFlatData);  
-      dataSheet.getRange(2, 2, allFlatData.length, 1).setNumberFormat("dd/mm/yyyy");  
-      dataSheet.getRange(2, 3, allFlatData.length, 1).setNumberFormat("@");  
-      dataSheet.getRange(2, 18, allFlatData.length, 1).setNumberFormat("@");  
+      dataSheet.getRange(2, DATA_IDX.PLAN_DELIVERY + 1, allFlatData.length, 1).setNumberFormat("dd/mm/yyyy");  
+      dataSheet.getRange(2, DATA_IDX.INVOICE_NO + 1, allFlatData.length, 1).setNumberFormat("@");  
+      dataSheet.getRange(2, DATA_IDX.DELIVERY_NO + 1, allFlatData.length, 1).setNumberFormat("@");  
     }
 
     applyMasterCoordinatesToDailyJob();  
@@ -263,9 +263,14 @@ function checkIsEPOD(ownerName, invoiceNo) {
  * เรียก runLookupEnrichment จาก 17_SearchService.gs
  */
 function applyMasterCoordinatesToDailyJob() {
-  logInfo('ServiceSCG', 'applyMasterCoordinates → เรียก Module 17');
-  runLookupEnrichment();
-  logInfo('ServiceSCG', 'applyMasterCoordinates เสร็จสิ้น');
+  try {
+    logInfo('ServiceSCG', 'applyMasterCoordinates → เรียก Module 17');
+    runLookupEnrichment();
+    logInfo('ServiceSCG', 'applyMasterCoordinates เสร็จสิ้น');
+  } catch (err) {
+    logError('ServiceSCG', `applyMasterCoordinatesToDailyJob ล้มเหลว: ${err.message}`);
+    SpreadsheetApp.getUi().alert(`❌ applyMasterCoordinatesToDailyJob ล้มเหลว: ${err.message}`);
+  }
 }
 
 // ============================================================
@@ -366,6 +371,7 @@ function buildShipmentSummary() {
 // ============================================================
 
 function clearAllSCGSheets_UI() {
+  try {
   const ui = SpreadsheetApp.getUi();
 
   const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -383,6 +389,10 @@ function clearAllSCGSheets_UI() {
 
   logInfo('ServiceSCG', `clearAllSCGSheets_UI: ล้าง ${cleared} ชีต`);
   ui.alert(`✅ ล้างข้อมูล ${cleared} ชีตเรียบร้อย`);
+  } catch (err) {
+    logError('ServiceSCG', `clearAllSCGSheets_UI ล้มเหลว: ${err.message}`);
+    SpreadsheetApp.getUi().alert(`❌ clearAllSCGSheets_UI ล้มเหลว: ${err.message}`);
+  }
 }
 
 function clearDailyJobLatLng() {

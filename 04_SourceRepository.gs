@@ -78,8 +78,9 @@ const SRC_READ_COLS = 37;
  * เรียกจาก runFullPipeline() หรือ Menu
  */
 function runLoadSource() {
-  const ss       = SpreadsheetApp.getActiveSpreadsheet();
-  const srcSheet = ss.getSheetByName(SHEET.SOURCE);
+  try {
+    const ss       = SpreadsheetApp.getActiveSpreadsheet();
+    const srcSheet = ss.getSheetByName(SHEET.SOURCE);
 
   if (!srcSheet) {
     logError('SourceRepo', `ไม่พบชีต: ${SHEET.SOURCE}`);
@@ -96,6 +97,10 @@ function runLoadSource() {
     SpreadsheetApp.getActiveSpreadsheet().toast(`🚀 โหลดข้อมูลสำเร็จ: ${pending.length} แถว พร้อมประมวลผล`, APP_NAME);
   } else {
     SpreadsheetApp.getActiveSpreadsheet().toast(`✅ ข้อมูลเป็นปัจจุบันอยู่แล้ว`, APP_NAME);
+  }
+  } catch (err) {
+    logError('SourceRepo', `runLoadSource ล้มเหลว: ${err.message}`);
+    SpreadsheetApp.getUi().alert(`❌ runLoadSource ล้มเหลว: ${err.message}`);
   }
 }
 

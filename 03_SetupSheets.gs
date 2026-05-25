@@ -473,12 +473,15 @@ function setupInputSheet_(ss) {
 
   // ตรวจสอบและทำความสะอาดแถว 1 คอลัมน์ที่เหลือ
   const lastCol = Math.max(3, sheet.getLastColumn());
+  const headerVals = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+  const targets = [];
   for (let col = 2; col <= lastCol; col++) {
-    const cell = sheet.getRange(1, col);
-    const val = String(cell.getValue()).trim();
-    if (val === 'Shipment_No' || val === 'หมายเหตุ') {
-      cell.clearContent().setFontWeight('normal').setBackground(null).setFontColor(null);
-    }
+    const val = String(headerVals[col - 1] || '').trim();
+    if (val === 'Shipment_No' || val === 'หมายเหตุ') targets.push(col);
+  }
+  if (targets.length > 0) {
+    const ranges = targets.map(c => sheet.getRange(1, c));
+    ranges.forEach(r => r.clearContent().setFontWeight('normal').setBackground(null).setFontColor(null));
   }
 
   logInfo('SetupSheets', `จัดโครงสร้างฟอร์มแนวตั้งชีต Input (A1=COOKIE, A3=ShipmentNos) เรียบร้อยครับ`);
