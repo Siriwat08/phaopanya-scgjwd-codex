@@ -71,9 +71,10 @@
  * runPreflightAudit — [MAIN] ตรวจสอบความพร้อมของระบบก่อนรัน Pipeline
  */
 function runPreflightAudit() {
-  const ui = SpreadsheetApp.getUi();
-  const logs = [];
-  let errorCount = 0;
+  try {
+    const ui = SpreadsheetApp.getUi();
+    const logs = [];
+    let errorCount = 0;
 
   logInfo('Hardening', 'เริ่มรัน Preflight Audit');
 
@@ -115,11 +116,15 @@ function runPreflightAudit() {
   }
 
   // Show Results
-  if (logs.length === 0) {
-    ui.alert('✅ Preflight Audit: ระบบพร้อมทำงาน 100%');
-  } else {
-    const report = logs.join('\n');
-    ui.alert(`📊 ผลการตรวจสอบ Preflight Audit:\n\n${report}\n\nพบจุดที่ควรตรวจสอบ ${logs.length} รายการ`);
+    if (logs.length === 0) {
+      ui.alert('✅ Preflight Audit: ระบบพร้อมทำงาน 100%');
+    } else {
+      const report = logs.join('\n');
+      ui.alert(`📊 ผลการตรวจสอบ Preflight Audit:\n\n${report}\n\nพบจุดที่ควรตรวจสอบ ${logs.length} รายการ`);
+    }
+  } catch (err) {
+    logError('Hardening', `runPreflightAudit ล้มเหลว: ${err.message}`);
+    SpreadsheetApp.getUi().alert(`❌ runPreflightAudit ล้มเหลว: ${err.message}`);
   }
 }
 
@@ -156,9 +161,10 @@ function fixMissingSyncStatus() {
  * detectDoubleProcessing — ตรวจสอบข้อมูลซ้ำใน FACT_DELIVERY
  */
 function detectDoubleProcessing() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const sheet = ss.getSheetByName(SHEET.FACT_DELIVERY);
-  if (!sheet || sheet.getLastRow() < 2) return;
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const sheet = ss.getSheetByName(SHEET.FACT_DELIVERY);
+    if (!sheet || sheet.getLastRow() < 2) return;
 
   const invoiceData = sheet.getRange(2, FACT_IDX.INVOICE_NO + 1, sheet.getLastRow() - 1, 1).getValues();
   const counts = {};
@@ -174,10 +180,59 @@ function detectDoubleProcessing() {
     if (counts[inv] > 1) duplicates.push(`${inv} (${counts[inv]} ครั้ง)`);
   });
 
-  if (duplicates.length === 0) {
-    SpreadsheetApp.getUi().alert('✅ ไม่พบข้อมูลซ้ำใน FACT_DELIVERY');
-  } else {
-    SpreadsheetApp.getUi().alert(`⚠️ พบ Invoice ซ้ำ ${duplicates.length} รายการ:\n\n${duplicates.slice(0, 10).join('\n')}${duplicates.length > 10 ? '\n...และอื่นๆ' : ''}`);
+    if (duplicates.length === 0) {
+      SpreadsheetApp.getUi().alert('✅ ไม่พบข้อมูลซ้ำใน FACT_DELIVERY');
+    } else {
+      SpreadsheetApp.getUi().alert(`⚠️ พบ Invoice ซ้ำ ${duplicates.length} รายการ:\n\n${duplicates.slice(0, 10).join('\n')}${duplicates.length > 10 ? '\n...และอื่นๆ' : ''}`);
+    }
+  } catch (err) {
+    logError('Hardening', `detectDoubleProcessing ล้มเหลว: ${err.message}`);
+    SpreadsheetApp.getUi().alert(`❌ detectDoubleProcessing ล้มเหลว: ${err.message}`);
+  }
+}
+
+/**
+ * runPhase1HardeningAudit — ตรวจ entry points สำคัญว่ามี try-catch และตรวจ duplicate name ที่เคยชน
+ */
+function runPhase1HardeningAudit() {
+  try {
+    const ui = SpreadsheetApp.getUi();
+    const findings = [];
+    const targets = [
+      'buildFullQualityReport',
+      'runPreflightAudit',
+      'detectDoubleProcessing',
+      'MIGRATION_HybridAliasSystem',
+      'fetchDataFromSCGJWD'
+    ];
+
+    targets.forEach(name => {
+      const fn = this[name];
+      if (typeof fn !== 'function') {
+        findings.push(`❌ ไม่พบ function: ${name}`);
+        return;
+      }
+      const src = String(fn);
+      if (!/try\s*\{/.test(src) || !/catch\s*\(/.test(src)) {
+        findings.push(`⚠️ ไม่มี try-catch ชัดเจน: ${name}`);
+      } else {
+        findings.push(`✅ มี try-catch: ${name}`);
+      }
+    });
+
+    const hasLegacyGeoLoader = (typeof this.loadCachedGeoRows_ === 'function');
+    const hasPlaceGeoLoader = (typeof this.loadCachedGeoRowsForPlace_ === 'function');
+    findings.push(hasPlaceGeoLoader
+      ? '✅ พบ loadCachedGeoRowsForPlace_ (Place scope)'
+      : '❌ ไม่พบ loadCachedGeoRowsForPlace_');
+    findings.push(hasLegacyGeoLoader
+      ? 'ℹ️ พบ loadCachedGeoRows_ (GeoDictionary scope)'
+      : '⚠️ ไม่พบ loadCachedGeoRows_');
+
+    ui.alert('Phase 1 Hardening Audit\n\n' + findings.join('\n'));
+  } catch (err) {
+    logError('Hardening', `runPhase1HardeningAudit ล้มเหลว: ${err.message}`);
+    SpreadsheetApp.getUi().alert(`❌ runPhase1HardeningAudit ล้มเหลว: ${err.message}`);
   }
 }
 

@@ -72,8 +72,9 @@
  * [FIX v003] guard ui.alert() กัน Trigger Error
  */
 function buildFullQualityReport() {
-  const ss       = SpreadsheetApp.getActiveSpreadsheet();
-  const rptSheet = ss.getSheetByName(SHEET.RPT_QUALITY);
+  try {
+    const ss       = SpreadsheetApp.getActiveSpreadsheet();
+    const rptSheet = ss.getSheetByName(SHEET.RPT_QUALITY);
 
   if (!rptSheet) {
     logError('ReportService', `ไม่พบชีต ${SHEET.RPT_QUALITY}`);
@@ -177,7 +178,7 @@ function buildFullQualityReport() {
     `Processed:${processedRate}% Q_Pending:${pendingInQueue}`);
 
   // [FIX v003] guard ui.alert() — ถ้ารันจาก Trigger จะ Error
-  safeUiAlert_(
+    safeUiAlert_(
     '📊 Data Quality Report\n\n' +
     `รวมทั้งหมด (Active):  ${totalFact} รายการ\n` +
     `Auto Match:            ${autoCount} (${autoMatchRate}%)\n` +
@@ -190,7 +191,11 @@ function buildFullQualityReport() {
     `  Place:   ${placeCount}\n` +
     `  Geo:     ${geoCount}\n` +
     `  Dest:    ${destCount}`
-  );
+    );
+  } catch (err) {
+    logError('ReportService', `buildFullQualityReport ล้มเหลว: ${err.message}`);
+    safeUiAlert_(`❌ buildFullQualityReport ล้มเหลว: ${err.message}`);
+  }
 }
 
 // ============================================================
