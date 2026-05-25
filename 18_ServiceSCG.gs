@@ -198,14 +198,8 @@ function fetchDataFromSCGJWD() {
 
     applyMasterCoordinatesToDailyJob();  
 
-    // [NEW v5.4.000] ดึงชื่อปลายทางจากข้อมูล SCG ใหม่ → M_ALIAS (เหมือน V4.0 NameMapping)
-    if (typeof populateAliasFromSCGRawData_ === 'function') {
-      try {
-        populateAliasFromSCGRawData_();
-      } catch (aliasErr) {
-        logWarn('ServiceSCG', 'populateAliasFromSCGRawData_ ล้มเหลว: ' + aliasErr.message);
-      }
-    }
+    // [CHANGE v5.4.002] ไม่เขียน M_ALIAS ใน flow อัตโนมัติของ Group 2
+    // ให้เรียกผ่านเมนู Admin/Manual เท่านั้น เพื่อคง Single Writer ของ pipeline
 
     buildOwnerSummary();  
     buildShipmentSummary();

@@ -144,6 +144,15 @@ function onOpen() {
     .addToUi();
 }
 
+/**
+ * autoInstallSmartNav_
+ * [ADD v5.4.002] กัน Phantom Function Call และรองรับการติดตั้งจริงในอนาคต
+ */
+function autoInstallSmartNav_() {
+  // no-op: intentionally left blank
+  return false;
+}
+
 // ============================================================
 // SECTION 2: onEdit Trigger
 // ============================================================

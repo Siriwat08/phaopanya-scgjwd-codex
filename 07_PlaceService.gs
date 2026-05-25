@@ -491,7 +491,7 @@ function extractTextPriority_(rawAddress, rawPlaceName) {
 function fuzzyMatchAddress(rawAddr, threshold = 0.7) {
   if (!rawAddr) return '';
   
-  const allRows = typeof loadCachedGeoRows_ === 'function' ? loadCachedGeoRows_() : [];
+  const allRows = typeof loadCachedGeoRowsForPlace_ === 'function' ? loadCachedGeoRowsForPlace_() : [];
   if (allRows.length === 0) return '';
 
   let bestMatch = null;
@@ -615,12 +615,16 @@ function updatePlaceStats(placeId) {
       return;
     }
 
-    const lastSeenCol   = PLACE_IDX.LAST_SEEN   + 1;
-    const usageCountCol = PLACE_IDX.USAGE_COUNT  + 1;
-
-    sheet.getRange(targetRow, lastSeenCol).setValue(new Date());
-    const curr = Number(sheet.getRange(targetRow, usageCountCol).getValue()) || 0;
-    sheet.getRange(targetRow, usageCountCol).setValue(curr + 1);
+    const lastSeenCol   = PLACE_IDX.LAST_SEEN + 1;
+    const usageCountCol = PLACE_IDX.USAGE_COUNT + 1;
+    const startCol = Math.min(lastSeenCol, usageCountCol);
+    const width = Math.abs(lastSeenCol - usageCountCol) + 1;
+    const rowVals = sheet.getRange(targetRow, startCol, 1, width).getValues()[0];
+    const lastSeenOffset = lastSeenCol - startCol;
+    const usageOffset = usageCountCol - startCol;
+    rowVals[lastSeenOffset] = new Date();
+    rowVals[usageOffset] = (Number(rowVals[usageOffset]) || 0) + 1;
+    sheet.getRange(targetRow, startCol, 1, width).setValues([rowVals]);
     invalidatePlaceCache_();
 
   } catch (err) {
@@ -633,9 +637,9 @@ function updatePlaceStats(placeId) {
 // ============================================================
 
 /**
- * [NEW v5.2.001] loadCachedGeoRows_ — Memoization loader
+ * [NEW v5.2.001] loadCachedGeoRowsForPlace_ — Memoization loader
  */
-function loadCachedGeoRows_() {
+function loadCachedGeoRowsForPlace_() {
   if (_GLOBAL_GEO_DICT_CACHE) return _GLOBAL_GEO_DICT_CACHE;
 
   const ss = SpreadsheetApp.getActiveSpreadsheet();
