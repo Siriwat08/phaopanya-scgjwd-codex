@@ -462,6 +462,7 @@ function MIGRATION_HybridAliasSystem() {
     ui.ButtonSet.YES_NO
   );
   if (confirmation !== ui.Button.YES) return;
+  try {
 
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var startTime = new Date();
@@ -555,6 +556,10 @@ function MIGRATION_HybridAliasSystem() {
     '• รวมทั้งหมด: ' + totalMigrated + ' รายการ\n' +
     '• ใช้เวลา: ' + elapsedSec + ' วินาที'
   );
+  } catch (err) {
+    logError('AliasService', `MIGRATION_HybridAliasSystem ล้มเหลว: ${err.message}`);
+    ui.alert(`❌ Migration ล้มเหลว: ${err.message}`);
+  }
 }
 
 // ============================================================
