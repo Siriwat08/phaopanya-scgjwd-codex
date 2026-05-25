@@ -335,14 +335,16 @@ function updatePersonStats(personId) {
       return;
     }
 
-    const lastSeenCol   = PERSON_IDX.LAST_SEEN   + 1;
-    const usageCountCol = PERSON_IDX.USAGE_COUNT  + 1;
-
-    sheet.getRange(targetRow, lastSeenCol).setValue(new Date());
-    const currCount = Number(
-      sheet.getRange(targetRow, usageCountCol).getValue()
-    ) || 0;
-    sheet.getRange(targetRow, usageCountCol).setValue(currCount + 1);
+    const lastSeenCol   = PERSON_IDX.LAST_SEEN + 1;
+    const usageCountCol = PERSON_IDX.USAGE_COUNT + 1;
+    const startCol = Math.min(lastSeenCol, usageCountCol);
+    const width = Math.abs(lastSeenCol - usageCountCol) + 1;
+    const rowVals = sheet.getRange(targetRow, startCol, 1, width).getValues()[0];
+    const lastSeenOffset = lastSeenCol - startCol;
+    const usageOffset = usageCountCol - startCol;
+    rowVals[lastSeenOffset] = new Date();
+    rowVals[usageOffset] = (Number(rowVals[usageOffset]) || 0) + 1;
+    sheet.getRange(targetRow, startCol, 1, width).setValues([rowVals]);
     invalidatePersonCache_();
 
   } catch (err) {
