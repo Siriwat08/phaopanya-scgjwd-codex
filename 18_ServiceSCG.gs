@@ -159,21 +159,21 @@ function fetchDataFromSCGJWD() {
 
     const shopAgg = {};  
     allFlatData.forEach(r => {  
-      const key = r[28];  
+      const key = r[DATA_IDX.SHOP_KEY];  
       if (!shopAgg[key]) shopAgg[key] = { qty: 0, weight: 0, invoices: new Set(), epod: 0 };  
-      shopAgg[key].qty += Number(r[14]) || 0;  
-      shopAgg[key].weight += Number(r[16]) || 0;  
-      shopAgg[key].invoices.add(r[2]);  
-      if (checkIsEPOD(r[9], r[2])) shopAgg[key].epod++;  
+      shopAgg[key].qty += Number(r[DATA_IDX.QTY]) || 0;  
+      shopAgg[key].weight += Number(r[DATA_IDX.WEIGHT]) || 0;  
+      shopAgg[key].invoices.add(r[DATA_IDX.INVOICE_NO]);  
+      if (checkIsEPOD(r[DATA_IDX.SOLD_TO_NAME], r[DATA_IDX.INVOICE_NO])) shopAgg[key].epod++;  
     });
 
     allFlatData.forEach(r => {  
-      const agg = shopAgg[r[28]];  
+      const agg = shopAgg[r[DATA_IDX.SHOP_KEY]];  
       const scanInv = agg.invoices.size - agg.epod;  
-      r[23] = agg.qty;  
-      r[24] = Number(agg.weight.toFixed(2));  
-      r[25] = scanInv;  
-      r[27] = `${r[9]} / รวม ${scanInv} บิล`;  
+      r[DATA_IDX.TOT_QTY] = agg.qty;  
+      r[DATA_IDX.TOT_WEIGHT] = Number(agg.weight.toFixed(2));  
+      r[DATA_IDX.SCAN_INV] = scanInv;  
+      r[DATA_IDX.OWNER_LABEL] = `${r[DATA_IDX.SOLD_TO_NAME]} / รวม ${scanInv} บิล`;  
     });
 
     const headers = [  
@@ -191,21 +191,15 @@ function fetchDataFromSCGJWD() {
 
     if (allFlatData.length > 0) {  
       dataSheet.getRange(2, 1, allFlatData.length, headers.length).setValues(allFlatData);  
-      dataSheet.getRange(2, 2, allFlatData.length, 1).setNumberFormat("dd/mm/yyyy");  
-      dataSheet.getRange(2, 3, allFlatData.length, 1).setNumberFormat("@");  
-      dataSheet.getRange(2, 18, allFlatData.length, 1).setNumberFormat("@");  
+      dataSheet.getRange(2, DATA_IDX.PLAN_DELIVERY + 1, allFlatData.length, 1).setNumberFormat("dd/mm/yyyy");  
+      dataSheet.getRange(2, DATA_IDX.INVOICE_NO + 1, allFlatData.length, 1).setNumberFormat("@");  
+      dataSheet.getRange(2, DATA_IDX.DELIVERY_NO + 1, allFlatData.length, 1).setNumberFormat("@");  
     }
 
     applyMasterCoordinatesToDailyJob();  
 
-    // [NEW v5.4.000] ดึงชื่อปลายทางจากข้อมูล SCG ใหม่ → M_ALIAS (เหมือน V4.0 NameMapping)
-    if (typeof populateAliasFromSCGRawData_ === 'function') {
-      try {
-        populateAliasFromSCGRawData_();
-      } catch (aliasErr) {
-        logWarn('ServiceSCG', 'populateAliasFromSCGRawData_ ล้มเหลว: ' + aliasErr.message);
-      }
-    }
+    // [CHANGE v5.4.002] ไม่เขียน M_ALIAS ใน flow อัตโนมัติของ Group 2
+    // ให้เรียกผ่านเมนู Admin/Manual เท่านั้น เพื่อคง Single Writer ของ pipeline
 
     buildOwnerSummary();  
     buildShipmentSummary();
@@ -269,9 +263,14 @@ function checkIsEPOD(ownerName, invoiceNo) {
  * เรียก runLookupEnrichment จาก 17_SearchService.gs
  */
 function applyMasterCoordinatesToDailyJob() {
-  logInfo('ServiceSCG', 'applyMasterCoordinates → เรียก Module 17');
-  runLookupEnrichment();
-  logInfo('ServiceSCG', 'applyMasterCoordinates เสร็จสิ้น');
+  try {
+    logInfo('ServiceSCG', 'applyMasterCoordinates → เรียก Module 17');
+    runLookupEnrichment();
+    logInfo('ServiceSCG', 'applyMasterCoordinates เสร็จสิ้น');
+  } catch (err) {
+    logError('ServiceSCG', `applyMasterCoordinatesToDailyJob ล้มเหลว: ${err.message}`);
+    SpreadsheetApp.getUi().alert(`❌ applyMasterCoordinatesToDailyJob ล้มเหลว: ${err.message}`);
+  }
 }
 
 // ============================================================
@@ -372,6 +371,7 @@ function buildShipmentSummary() {
 // ============================================================
 
 function clearAllSCGSheets_UI() {
+  try {
   const ui = SpreadsheetApp.getUi();
 
   const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -389,6 +389,10 @@ function clearAllSCGSheets_UI() {
 
   logInfo('ServiceSCG', `clearAllSCGSheets_UI: ล้าง ${cleared} ชีต`);
   ui.alert(`✅ ล้างข้อมูล ${cleared} ชีตเรียบร้อย`);
+  } catch (err) {
+    logError('ServiceSCG', `clearAllSCGSheets_UI ล้มเหลว: ${err.message}`);
+    SpreadsheetApp.getUi().alert(`❌ clearAllSCGSheets_UI ล้มเหลว: ${err.message}`);
+  }
 }
 
 function clearDailyJobLatLng() {

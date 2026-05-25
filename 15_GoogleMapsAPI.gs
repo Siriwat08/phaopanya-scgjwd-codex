@@ -282,9 +282,9 @@ function getFromSheetCache_(cacheKey) {
   for (let i = 0; i < data.length; i++) {
     if (String(data[i][MC_KEY]).trim() !== cacheKey) continue;
 
-    // อัปเดต hit_count
-    sheet.getRange(i + 2, MC_HIT + 1)
-         .setValue(Number(data[i][MC_HIT] || 0) + 1);
+    // อัปเดต hit_count (batch-safe row update)
+    data[i][MC_HIT] = Number(data[i][MC_HIT] || 0) + 1;
+    sheet.getRange(i + 2, 1, 1, totalCols).setValues([data[i]]);
 
     // [FIX v003] คืน province + district ด้วย
     return {
@@ -317,8 +317,8 @@ function saveToSheetCache_(cacheKey, inputAddr, result) {
       'maps_api',
       new Date(),
       1,
-      result.province     || '',  // [FIX v003] col [8]
-      result.district     || '',  // [FIX v003] col [9]
+      result.province     || '',
+      result.district     || '',
     ]);
   } catch (err) {
     logError('MapsAPI', `saveToSheetCache_ ล้มเหลว: ${err.message}`);

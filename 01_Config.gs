@@ -73,15 +73,20 @@ let _GLOBAL_GEO_POINTS_CACHE = null;
  * @summary ใช้สำหรับเคลียร์ความจำของสคริปต์เพื่อให้โหลดข้อมูลใหม่จากชีต 100%
  */
 function invalidateAllGlobalCaches() {
-  _GLOBAL_GEO_DICT_CACHE = null;
-  _GLOBAL_GEO_POINTS_CACHE = null;
+  try {
+    _GLOBAL_GEO_DICT_CACHE = null;
+    _GLOBAL_GEO_POINTS_CACHE = null;
 
-  // เรียกฟังก์ชันล้าง Cache ในโมดูลอื่นๆ (ถ้ามี)
-  if (typeof invalidatePersonCache_ === 'function') invalidatePersonCache_();
-  if (typeof invalidatePlaceCache_  === 'function') invalidatePlaceCache_();
-  if (typeof invalidateGeoCache_    === 'function') invalidateGeoCache_();
+    // เรียกฟังก์ชันล้าง Cache ในโมดูลอื่นๆ (ถ้ามี)
+    if (typeof invalidatePersonCache_ === 'function') invalidatePersonCache_();
+    if (typeof invalidatePlaceCache_  === 'function') invalidatePlaceCache_();
+    if (typeof invalidateGeoCache_    === 'function') invalidateGeoCache_();
 
-  logInfo('System', 'ล้างข้อมูลในความจำ (Cache) ทั้งหมดเรียบร้อยแล้ว');
+    logInfo('System', 'ล้างข้อมูลในความจำ (Cache) ทั้งหมดเรียบร้อยแล้ว');
+  } catch (err) {
+    logError('System', `invalidateAllGlobalCaches ล้มเหลว: ${err.message}`);
+    SpreadsheetApp.getUi().alert(`❌ invalidateAllGlobalCaches ล้มเหลว: ${err.message}`);
+  }
 }
 
 // ============================================================
@@ -173,6 +178,15 @@ const ALIAS_IDX = Object.freeze({
   SOURCE:        5,
   CREATED_AT:    6,
   ACTIVE_FLAG:   7,
+});
+
+const SYSLOG_IDX = Object.freeze({
+  LOG_ID: 0,
+  TIMESTAMP: 1,
+  MODULE: 2,
+  LEVEL: 3,
+  MESSAGE: 4,
+  DETAIL: 5,
 });
 
 const GEO_IDX = Object.freeze({

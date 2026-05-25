@@ -131,6 +131,8 @@ function onOpen() {
         .addSeparator()
         .addItem('🛡️ [PH2] Preflight Audit',      'runPreflightAudit')
         .addItem('🧹 [PH2] Detect Duplicates',     'detectDoubleProcessing')
+        .addItem('🧪 [PH1] Hardening Audit',       'runPhase1HardeningAudit')
+        .addItem('🚦 [PH2] Quality Gate',          'runPhase2QualityGate')
         .addItem('✅ ตรวจสอบ System Integrity',   'checkSystemIntegrity')
         .addItem('🔍 วินิจฉัย Pipeline (Diagnostic)', 'diagnoseSystemState')
         .addSeparator()
@@ -142,6 +144,15 @@ function onOpen() {
     )
 
     .addToUi();
+}
+
+/**
+ * autoInstallSmartNav_
+ * [ADD v5.4.002] กัน Phantom Function Call และรองรับการติดตั้งจริงในอนาคต
+ */
+function autoInstallSmartNav_() {
+  // no-op: intentionally left blank
+  return false;
 }
 
 // ============================================================
@@ -196,28 +207,33 @@ function onEdit(e) {
  * Installable Trigger มีสิทธิ์เต็มรูปแบบ รวมถึง UI dialog
  */
 function installSmartNavTrigger() {
-  // ลบ Smart Nav trigger เก่าก่อน (ถ้ามี)
-  const triggers = ScriptApp.getProjectTriggers();
-  let deletedCount = 0;
-  for (const t of triggers) {
-    if (t.getHandlerFunction() === 'handleSelectionChange_') {
-      ScriptApp.deleteTrigger(t);
-      deletedCount++;
+  try {
+    // ลบ Smart Nav trigger เก่าก่อน (ถ้ามี)
+    const triggers = ScriptApp.getProjectTriggers();
+    let deletedCount = 0;
+    for (const t of triggers) {
+      if (t.getHandlerFunction() === 'handleSelectionChange_') {
+        ScriptApp.deleteTrigger(t);
+        deletedCount++;
+      }
     }
+
+    // ติดตั้งใหม่
+    ScriptApp.newTrigger('handleSelectionChange_')
+      .forSpreadsheet(SpreadsheetApp.getActive())
+      .onSelectionChange()
+      .create();
+
+    SpreadsheetApp.getUi().alert(
+      '✅ ติดตั้ง Smart Navigation สำเร็จ!\n\n' +
+      (deletedCount > 0 ? `(ลบ Trigger เก่า ${deletedCount} ตัว)\n\n` : '') +
+      'วิธีใช้: ไปที่ชีต Q_REVIEW แล้วคลิกที่ช่อง Candidate ID (คอลัมน์ L-O)\n' +
+      'ระบบจะถามว่าต้องการนำทางไปตารางหลัก (Master) หรือ ประวัติขนส่ง (FACT)'
+    );
+  } catch (err) {
+    logError('App', `installSmartNavTrigger ล้มเหลว: ${err.message}`);
+    SpreadsheetApp.getUi().alert(`❌ installSmartNavTrigger ล้มเหลว: ${err.message}`);
   }
-
-  // ติดตั้งใหม่
-  ScriptApp.newTrigger('handleSelectionChange_')
-    .forSpreadsheet(SpreadsheetApp.getActive())
-    .onSelectionChange()
-    .create();
-
-  SpreadsheetApp.getUi().alert(
-    '✅ ติดตั้ง Smart Navigation สำเร็จ!\n\n' +
-    (deletedCount > 0 ? `(ลบ Trigger เก่า ${deletedCount} ตัว)\n\n` : '') +
-    'วิธีใช้: ไปที่ชีต Q_REVIEW แล้วคลิกที่ช่อง Candidate ID (คอลัมน์ L-O)\n' +
-    'ระบบจะถามว่าต้องการนำทางไปตารางหลัก (Master) หรือ ประวัติขนส่ง (FACT)'
-  );
 }
 
 /**
@@ -468,14 +484,19 @@ function getPipelineDiagnosticSummary_() {
 // ============================================================
 
 function openReviewQueue() {
-  const ss    = SpreadsheetApp.getActiveSpreadsheet();
-  const sheet = ss.getSheetByName(SHEET.Q_REVIEW);
-  if (sheet) {
-    ss.setActiveSheet(sheet);
-    ss.toast('กำลังแสดง Review Queue', APP_NAME, 3);
-  } else {
-    SpreadsheetApp.getUi()
-      .alert('❌ ไม่พบชีต Q_REVIEW\nกรุณารัน "สร้างชีตทั้งหมด" ก่อน');
+  try {
+    const ss    = SpreadsheetApp.getActiveSpreadsheet();
+    const sheet = ss.getSheetByName(SHEET.Q_REVIEW);
+    if (sheet) {
+      ss.setActiveSheet(sheet);
+      ss.toast('กำลังแสดง Review Queue', APP_NAME, 3);
+    } else {
+      SpreadsheetApp.getUi()
+        .alert('❌ ไม่พบชีต Q_REVIEW\nกรุณารัน "สร้างชีตทั้งหมด" ก่อน');
+    }
+  } catch (err) {
+    logError('App', `openReviewQueue ล้มเหลว: ${err.message}`);
+    SpreadsheetApp.getUi().alert(`❌ openReviewQueue ล้มเหลว: ${err.message}`);
   }
 }
 
@@ -615,6 +636,7 @@ function showVersionInfo() {
  * เรียกจากเมนู: 🔧 ระบบ > 🔍 วินิจฉัย Pipeline (Diagnostic)
  */
 function diagnoseSystemState() {
+  try {
   const ui = SpreadsheetApp.getUi();
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const lines = [];
@@ -727,13 +749,13 @@ function diagnoseSystemState() {
   if (logSheet && logSheet.getLastRow() > 1) {
     const logRows = Math.min(20, logSheet.getLastRow() - 1);
     const logData = logSheet.getRange(logSheet.getLastRow() - logRows + 1, 1, logRows, 6).getValues();
-    const errors = logData.filter(r => String(r[3]).trim() === 'ERROR').slice(-5);
+    const errors = logData.filter(r => String(r[SYSLOG_IDX.LEVEL]).trim() === 'ERROR').slice(-5);
     if (errors.length === 0) {
       lines.push('  ✅ ไม่มี Error ใน 20 แถวล่าสุด');
     } else {
       errors.forEach(e => {
-        const mod = String(e[2] || '').substring(0, 20);
-        const msg = String(e[4] || '').substring(0, 80);
+        const mod = String(e[SYSLOG_IDX.MODULE] || '').substring(0, 20);
+        const msg = String(e[SYSLOG_IDX.MESSAGE] || '').substring(0, 80);
         lines.push(`  ❌ [${mod}] ${msg}`);
       });
       fixes.push('ตรวจสอบ Error ใน SYS_LOG — อาจเป็นสาเหตุที่ชีตว่าง');
@@ -753,4 +775,8 @@ function diagnoseSystemState() {
   }
 
   ui.alert(lines.join('\n'));
+  } catch (err) {
+    logError('App', `diagnoseSystemState ล้มเหลว: ${err.message}`);
+    SpreadsheetApp.getUi().alert(`❌ diagnoseSystemState ล้มเหลว: ${err.message}`);
+  }
 }

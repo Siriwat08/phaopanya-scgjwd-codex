@@ -73,6 +73,7 @@
 // ============================================================
 
 function buildGeoDictionary() {
+  try {
   const ss    = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = ss.getSheetByName(SHEET.SYS_TH_GEO);
 
@@ -146,6 +147,10 @@ function buildGeoDictionary() {
     `  จังหวัด:       ${provinceSet.size}\n` +
     `  รหัสไปรษณีย์: ${Object.keys(postcodeMap).length}`
   );
+  } catch (err) {
+    logError('GeoDictBuilder', `buildGeoDictionary ล้มเหลว: ${err.message}`);
+    safeAlert_(`❌ buildGeoDictionary ล้มเหลว: ${err.message}`);
+  }
 }
 
 // ============================================================

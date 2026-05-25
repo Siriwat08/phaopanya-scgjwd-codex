@@ -94,45 +94,10 @@
  * @return {string|null} aliasId หรือ null ถ้าซ้ำ
  */
 function createGlobalAlias(masterUuid, variantName, entityType, confidence, source) {
-  if (!masterUuid || !variantName || !entityType) return null;
-  const cleanVariant = normalizeForCompare(variantName);
-  if (!cleanVariant || cleanVariant.length < 2) return null;
-
-  // ตรวจสอบ duplicate ใน RAM cache ก่อน (เร็วกว่าอ่านชีต)
-  const existingMap = loadGlobalAliasesMap_();
-  const uidKey = entityType + '_' + masterUuid;
-  if (existingMap[uidKey] && existingMap[uidKey].includes(cleanVariant)) {
-    return null; // มีอยู่แล้ว ข้าม
-  }
-
-  // เขียนลง M_ALIAS sheet
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const sheet = ss.getSheetByName(SHEET.M_ALIAS);
-  if (!sheet) return null;
-
-  const aliasId = generateShortId('A');
-  const now = new Date();
-  sheet.appendRow([
-    aliasId,
-    masterUuid,
-    variantName,           // เก็บชื่อดิบไว้ (ยังไม่ normalize)
-    entityType,
-    confidence || 100,
-    source || 'MANUAL',
-    now,
-    true
-  ]);
-
-  // [REMOVED v5.4.001] ไม่เรียก syncAliasToEntityTable_() อีกต่อไป
-  // เพื่อป้องกัน circular dependency (createGlobalAlias → sync → createPersonAlias → createGlobalAlias)
-  // M_PERSON_ALIAS / M_PLACE_ALIAS เขียนที่ autoEnrichAliasesFromFactBatch_() เท่านั้น
-
-  // ล้าง Cache เพื่อให้การค้นหาครั้งถัดไปเห็นข้อมูลใหม่
-  CacheService.getScriptCache().remove('M_GLOBAL_ALIAS_ALL');
-  CacheService.getScriptCache().remove('M_GLOBAL_ALIAS_REVERSE');
-
-  logDebug('AliasService', `createGlobalAlias: ${aliasId} [${entityType}] "${variantName}" → ${masterUuid.substring(0, 8)}... (${source})`);
-  return aliasId;
+  // [ENFORCE v5.4.003] Single Writer Policy:
+  // ห้ามเขียน M_ALIAS จากฟังก์ชันนี้ ให้เขียนได้เฉพาะ autoEnrichAliasesFromFactBatch_() เท่านั้น
+  logWarn('AliasService', `BLOCKED createGlobalAlias by Single Writer policy: ${source || 'UNKNOWN_SOURCE'}`);
+  return null;
 }
 
 // ============================================================
@@ -395,8 +360,9 @@ function convertPlaceIdToUuid(placeId) {
  * ควรรันหลังจาก setup sheets หรือก่อน migration
  */
 function assignMasterUuidIfMissing() {
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var fixedTotal = 0;
+  try {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var fixedTotal = 0;
 
   [SHEET.M_PERSON, SHEET.M_PLACE].forEach(function(sheetName) {
     var sheet = ss.getSheetByName(sheetName);
@@ -436,7 +402,12 @@ function assignMasterUuidIfMissing() {
     invalidateAllGlobalCaches();
   }
 
-  return fixedTotal;
+    return fixedTotal;
+  } catch (err) {
+    logError('AliasService', `assignMasterUuidIfMissing ล้มเหลว: ${err.message}`);
+    SpreadsheetApp.getUi().alert(`❌ assignMasterUuidIfMissing ล้มเหลว: ${err.message}`);
+    return 0;
+  }
 }
 
 // ============================================================
@@ -462,9 +433,17 @@ function MIGRATION_HybridAliasSystem() {
     ui.ButtonSet.YES_NO
   );
   if (confirmation !== ui.Button.YES) return;
+  try {
 
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var startTime = new Date();
+  var deadlineMs = Number(AI_CONFIG && AI_CONFIG.TIME_LIMIT_MS) || 300000;
+  var softDeadline = startTime.getTime() + Math.max(60000, deadlineMs - 20000);
+  function ensureTime_(step, idx) {
+    if (Date.now() > softDeadline) {
+      throw new Error('Migration timeout guard at ' + step + ' (index=' + idx + ')');
+    }
+  }
 
   // Step 1: ตรวจสอบ master_uuid
   logInfo('AliasService', 'Step 1: ตรวจสอบ master_uuid...');
@@ -481,7 +460,8 @@ function MIGRATION_HybridAliasSystem() {
   var personAliasSheet = ss.getSheetByName(SHEET.M_PERSON_ALIAS);
   if (personAliasSheet && personAliasSheet.getLastRow() > 1) {
     var paData = personAliasSheet.getRange(2, 1, personAliasSheet.getLastRow() - 1, SCHEMA[SHEET.M_PERSON_ALIAS].length).getValues();
-    paData.forEach(function(r) {
+    paData.forEach(function(r, idx) {
+      if (idx % 100 === 0) ensureTime_('Step2:M_PERSON_ALIAS', idx);
       if (!r[PERSON_ALIAS_IDX.ACTIVE_FLAG]) return;
       var personId = String(r[PERSON_ALIAS_IDX.PERSON_ID] || '');
       var aliasName = String(r[PERSON_ALIAS_IDX.ALIAS_NAME] || '');
@@ -501,7 +481,8 @@ function MIGRATION_HybridAliasSystem() {
   var placeAliasSheet = ss.getSheetByName(SHEET.M_PLACE_ALIAS);
   if (placeAliasSheet && placeAliasSheet.getLastRow() > 1) {
     var plData = placeAliasSheet.getRange(2, 1, placeAliasSheet.getLastRow() - 1, SCHEMA[SHEET.M_PLACE_ALIAS].length).getValues();
-    plData.forEach(function(r) {
+    plData.forEach(function(r, idx) {
+      if (idx % 100 === 0) ensureTime_('Step3:M_PLACE_ALIAS', idx);
       if (!r[PLACE_ALIAS_IDX.ACTIVE_FLAG]) return;
       var placeId = String(r[PLACE_ALIAS_IDX.PLACE_ID] || '');
       var aliasName = String(r[PLACE_ALIAS_IDX.ALIAS_NAME] || '');
@@ -518,10 +499,12 @@ function MIGRATION_HybridAliasSystem() {
 
   // Step 4: ดึงชื่อปลายทางจากชีต SCG ดิบ → M_ALIAS
   logInfo('AliasService', 'Step 4: ดึงชื่อจากชีต SCG ดิบ → M_ALIAS...');
+  ensureTime_('Step4:SCG_RAW', 0);
   var scgCount = populateAliasFromSCGRawData_();
 
   // Step 5: ดึงชื่อจาก FACT_DELIVERY → M_ALIAS
   logInfo('AliasService', 'Step 5: ดึงชื่อจาก FACT_DELIVERY → M_ALIAS...');
+  ensureTime_('Step5:FACT', 0);
   var factCount = populateAliasFromFactDelivery_();
 
   var elapsedSec = Math.round((new Date() - startTime) / 1000);
@@ -544,6 +527,10 @@ function MIGRATION_HybridAliasSystem() {
     '• รวมทั้งหมด: ' + totalMigrated + ' รายการ\n' +
     '• ใช้เวลา: ' + elapsedSec + ' วินาที'
   );
+  } catch (err) {
+    logError('AliasService', `MIGRATION_HybridAliasSystem ล้มเหลว: ${err.message}`);
+    ui.alert(`❌ Migration ล้มเหลว: ${err.message}`);
+  }
 }
 
 // ============================================================
@@ -557,8 +544,9 @@ function MIGRATION_HybridAliasSystem() {
  * @return {number} จำนวน alias ที่สร้างใหม่
  */
 function populateAliasFromSCGRawData_() {
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var sourceSheet = ss.getSheetByName(SHEET.SOURCE);
+  try {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var sourceSheet = ss.getSheetByName(SHEET.SOURCE);
   if (!sourceSheet || sourceSheet.getLastRow() < 2) {
     logWarn('AliasService', 'ชีต SCG ดิบ ว่างอยู่ — ข้ามการดึงข้อมูล');
     return 0;
@@ -600,7 +588,17 @@ function populateAliasFromSCGRawData_() {
   });
 
   var aliasCount = 0;
+  var startedAt = Date.now();
+  var timeLimit = Number(AI_CONFIG && AI_CONFIG.TIME_LIMIT_MS) || 300000;
+  var softDeadline = startedAt + Math.max(60000, timeLimit - 20000);
+  function ensureTime_(idx) {
+    if (idx % 100 === 0 && Date.now() > softDeadline) {
+      throw new Error('populateAliasFromSCGRawData_ timeout guard at index=' + idx);
+    }
+  }
+  var idx = 0;
   for (var normKey in nameCount) {
+    ensureTime_(idx++);
     var info = nameCount[normKey];
     var rawName = info.rawName;
 
@@ -641,7 +639,12 @@ function populateAliasFromSCGRawData_() {
   }
 
   logInfo('AliasService', 'populateAliasFromSCGRawData: ดึง ' + Object.keys(nameCount).length + ' ชื่อไม่ซ้ำ → สร้าง ' + aliasCount + ' alias ใหม่');
-  return aliasCount;
+    return aliasCount;
+  } catch (err) {
+    logError('AliasService', `populateAliasFromSCGRawData_ ล้มเหลว: ${err.message}`);
+    SpreadsheetApp.getUi().alert(`❌ populateAliasFromSCGRawData_ ล้มเหลว: ${err.message}`);
+    return 0;
+  }
 }
 
 // ============================================================
@@ -653,9 +656,10 @@ function populateAliasFromSCGRawData_() {
  * @return {number} จำนวน alias ที่สร้างใหม่
  */
 function populateAliasFromFactDelivery_() {
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var factSheet = ss.getSheetByName(SHEET.FACT_DELIVERY);
-  if (!factSheet || factSheet.getLastRow() < 2) return 0;
+  try {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var factSheet = ss.getSheetByName(SHEET.FACT_DELIVERY);
+    if (!factSheet || factSheet.getLastRow() < 2) return 0;
 
   var schemaLen = SCHEMA[SHEET.FACT_DELIVERY].length;
   var data = factSheet.getRange(2, 1, factSheet.getLastRow() - 1, schemaLen).getValues();
@@ -675,7 +679,17 @@ function populateAliasFromFactDelivery_() {
   });
 
   var aliasCount = 0;
+  var startedAt = Date.now();
+  var timeLimit = Number(AI_CONFIG && AI_CONFIG.TIME_LIMIT_MS) || 300000;
+  var softDeadline = startedAt + Math.max(60000, timeLimit - 20000);
+  function ensureTime_(idx) {
+    if (idx % 100 === 0 && Date.now() > softDeadline) {
+      throw new Error('populateAliasFromFactDelivery_ timeout guard at index=' + idx);
+    }
+  }
+  var idx = 0;
   for (var normKey in nameMap) {
+    ensureTime_(idx++);
     var info = nameMap[normKey];
 
     // ลอง Person ก่อน
@@ -698,8 +712,13 @@ function populateAliasFromFactDelivery_() {
     }
   }
 
-  logInfo('AliasService', 'populateAliasFromFactDelivery: ดึง ' + Object.keys(nameMap).length + ' ชื่อไม่ซ้ำ → สร้าง ' + aliasCount + ' alias ใหม่');
-  return aliasCount;
+    logInfo('AliasService', 'populateAliasFromFactDelivery: ดึง ' + Object.keys(nameMap).length + ' ชื่อไม่ซ้ำ → สร้าง ' + aliasCount + ' alias ใหม่');
+    return aliasCount;
+  } catch (err) {
+    logError('AliasService', `populateAliasFromFactDelivery_ ล้มเหลว: ${err.message}`);
+    SpreadsheetApp.getUi().alert(`❌ populateAliasFromFactDelivery_ ล้มเหลว: ${err.message}`);
+    return 0;
+  }
 }
 
 // ============================================================

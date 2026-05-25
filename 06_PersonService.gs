@@ -335,14 +335,16 @@ function updatePersonStats(personId) {
       return;
     }
 
-    const lastSeenCol   = PERSON_IDX.LAST_SEEN   + 1;
-    const usageCountCol = PERSON_IDX.USAGE_COUNT  + 1;
-
-    sheet.getRange(targetRow, lastSeenCol).setValue(new Date());
-    const currCount = Number(
-      sheet.getRange(targetRow, usageCountCol).getValue()
-    ) || 0;
-    sheet.getRange(targetRow, usageCountCol).setValue(currCount + 1);
+    const lastSeenCol   = PERSON_IDX.LAST_SEEN + 1;
+    const usageCountCol = PERSON_IDX.USAGE_COUNT + 1;
+    const startCol = Math.min(lastSeenCol, usageCountCol);
+    const width = Math.abs(lastSeenCol - usageCountCol) + 1;
+    const rowVals = sheet.getRange(targetRow, startCol, 1, width).getValues()[0];
+    const lastSeenOffset = lastSeenCol - startCol;
+    const usageOffset = usageCountCol - startCol;
+    rowVals[lastSeenOffset] = new Date();
+    rowVals[usageOffset] = (Number(rowVals[usageOffset]) || 0) + 1;
+    sheet.getRange(targetRow, startCol, 1, width).setValues([rowVals]);
     invalidatePersonCache_();
 
   } catch (err) {
@@ -392,20 +394,22 @@ function mergePersonRecords(sourceId, targetId) {
       }
 
       // [FIX v003] ห้ามลบ — เปลี่ยน Status เป็น Merged แทน
-      sheet.getRange(targetRow, statCol + 1).setValue(APP_CONST.STATUS_MERGED);
       if (noteCol !== -1) {
-        sheet.getRange(targetRow, noteCol + 1).setValue(
-          `Merged → ${targetId} on ${toThaiDateStr(new Date())}`
-        );
+        const startCol = Math.min(statCol + 1, noteCol + 1);
+        const endCol = Math.max(statCol + 1, noteCol + 1);
+        const rowVals = sheet.getRange(targetRow, startCol, 1, endCol - startCol + 1).getValues()[0];
+        rowVals[(statCol + 1) - startCol] = APP_CONST.STATUS_MERGED;
+        rowVals[(noteCol + 1) - startCol] = `Merged → ${targetId} on ${toThaiDateStr(new Date())}`;
+        sheet.getRange(targetRow, startCol, 1, endCol - startCol + 1).setValues([rowVals]);
+      } else {
+        sheet.getRange(targetRow, statCol + 1).setValue(APP_CONST.STATUS_MERGED);
       }
       break;
     }
 
     // [FIX v003] สร้าง Alias ด้วย canonical_name ของ source ไม่ใช่ sourceId
     createPersonAlias(targetId, sourceCanonical, 100);
-    if (typeof createGlobalAlias === 'function' && targetMasterUuid) {
-      createGlobalAlias(targetMasterUuid, sourceCanonical, 'PERSON', 100, 'ADMIN_MERGE_ACT');
-    }
+    // [v5.4.003] Single Writer: ไม่เขียน M_ALIAS จาก merge path
     invalidatePersonCache_();
     logInfo('PersonService', `mergePersonRecords: ${sourceId} → ${targetId}`);
 
