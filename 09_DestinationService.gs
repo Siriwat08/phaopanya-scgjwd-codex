@@ -183,21 +183,22 @@ function updateDestinationStats(destId, deliveryDate) {
     // [FIX v003] const now ครั้งเดียว แทนเรียก new Date() 2 ครั้ง
     const now = new Date();
 
-    const lastSeenCol    = DEST_IDX.LAST_SEEN      + 1;
-    const usageCountCol  = DEST_IDX.USAGE_COUNT    + 1;
-    const delivDateCol   = DEST_IDX.DELIVERY_DATE  + 1;
-
-    sheet.getRange(targetRow, lastSeenCol).setValue(now);
-
-    const curr = Number(sheet.getRange(targetRow, usageCountCol).getValue()) || 0;
-    sheet.getRange(targetRow, usageCountCol).setValue(curr + 1);
-
+    const lastSeenCol    = DEST_IDX.LAST_SEEN + 1;
+    const usageCountCol  = DEST_IDX.USAGE_COUNT + 1;
+    const delivDateCol   = DEST_IDX.DELIVERY_DATE + 1;
+    const startCol = Math.min(lastSeenCol, usageCountCol, delivDateCol);
+    const endCol = Math.max(lastSeenCol, usageCountCol, delivDateCol);
+    const width = endCol - startCol + 1;
+    const rowVals = sheet.getRange(targetRow, startCol, 1, width).getValues()[0];
+    rowVals[lastSeenCol - startCol] = now;
+    rowVals[usageCountCol - startCol] = (Number(rowVals[usageCountCol - startCol]) || 0) + 1;
     if (deliveryDate) {
       const safeDate = deliveryDate instanceof Date ? deliveryDate : new Date(deliveryDate);
       if (!isNaN(safeDate.getTime())) {
-        sheet.getRange(targetRow, delivDateCol).setValue(safeDate);
+        rowVals[delivDateCol - startCol] = safeDate;
       }
     }
+    sheet.getRange(targetRow, startCol, 1, width).setValues([rowVals]);
 
     invalidateDestCache_();
 

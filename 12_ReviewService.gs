@@ -235,6 +235,17 @@ function applyReviewDecision(reviewId, decisionVal, rowData) {
     return;
   }
 
+  function writeReviewMeta_(status, note) {
+    const currentNote = String(rowArr[REVIEW_IDX.NOTE] || '');
+    sheet.getRange(targetRow, REVIEW_IDX.STATUS + 1, 1, 5).setValues([[
+      status,
+      reviewer,
+      now,
+      decisionVal,
+      note != null ? note : currentNote
+    ]]);
+  }
+
   // [FIX v003] ใช้ REVIEW_IDX.STATUS + 1 แทน headers.indexOf
   switch (decisionVal) {
 
@@ -340,11 +351,7 @@ function applyReviewDecision(reviewId, decisionVal, rowData) {
         { action: 'CREATE_NEW', reason: 'REVIEW_APPROVED', confidence: 95, priority: 0 });
 
       // อัปเดต Q_REVIEW status
-      sheet.getRange(targetRow, REVIEW_IDX.STATUS      + 1).setValue('Done');
-      sheet.getRange(targetRow, REVIEW_IDX.REVIEWER    + 1).setValue(reviewer);
-      sheet.getRange(targetRow, REVIEW_IDX.REVIEWED_AT + 1).setValue(now);
-      sheet.getRange(targetRow, REVIEW_IDX.DECISION    + 1).setValue(decisionVal);
-      sheet.getRange(targetRow, REVIEW_IDX.NOTE        + 1).setValue('Resolved (Created New)');
+      writeReviewMeta_('Done', 'Resolved (Created New)');
       break;
     }
 
@@ -362,28 +369,19 @@ function applyReviewDecision(reviewId, decisionVal, rowData) {
         }
       }
 
-      sheet.getRange(targetRow, REVIEW_IDX.STATUS      + 1).setValue('Done');
-      sheet.getRange(targetRow, REVIEW_IDX.REVIEWER    + 1).setValue(reviewer);
-      sheet.getRange(targetRow, REVIEW_IDX.REVIEWED_AT + 1).setValue(now);
-      sheet.getRange(targetRow, REVIEW_IDX.DECISION    + 1).setValue(decisionVal);
+      writeReviewMeta_('Done');
       break;
     }
 
     case 'ESCALATE': {
       // [FIX v003] setValue('Escalated') แล้ว return ทันที
-      sheet.getRange(targetRow, REVIEW_IDX.STATUS      + 1).setValue('Escalated');
-      sheet.getRange(targetRow, REVIEW_IDX.REVIEWER    + 1).setValue(reviewer);
-      sheet.getRange(targetRow, REVIEW_IDX.REVIEWED_AT + 1).setValue(now);
-      sheet.getRange(targetRow, REVIEW_IDX.DECISION    + 1).setValue(decisionVal);
+      writeReviewMeta_('Escalated');
       logInfo('ReviewService', `reviewId ${reviewId} → Escalated`);
       return; 
     }
 
     case 'IGNORE': {
-      sheet.getRange(targetRow, REVIEW_IDX.STATUS      + 1).setValue('Done');
-      sheet.getRange(targetRow, REVIEW_IDX.REVIEWER    + 1).setValue(reviewer);
-      sheet.getRange(targetRow, REVIEW_IDX.REVIEWED_AT + 1).setValue(now);
-      sheet.getRange(targetRow, REVIEW_IDX.DECISION    + 1).setValue(decisionVal);
+      writeReviewMeta_('Done');
       break;
     }
 

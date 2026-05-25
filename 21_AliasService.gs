@@ -588,7 +588,17 @@ function populateAliasFromSCGRawData_() {
   });
 
   var aliasCount = 0;
+  var startedAt = Date.now();
+  var timeLimit = Number(AI_CONFIG && AI_CONFIG.TIME_LIMIT_MS) || 300000;
+  var softDeadline = startedAt + Math.max(60000, timeLimit - 20000);
+  function ensureTime_(idx) {
+    if (idx % 100 === 0 && Date.now() > softDeadline) {
+      throw new Error('populateAliasFromSCGRawData_ timeout guard at index=' + idx);
+    }
+  }
+  var idx = 0;
   for (var normKey in nameCount) {
+    ensureTime_(idx++);
     var info = nameCount[normKey];
     var rawName = info.rawName;
 
@@ -646,9 +656,10 @@ function populateAliasFromSCGRawData_() {
  * @return {number} จำนวน alias ที่สร้างใหม่
  */
 function populateAliasFromFactDelivery_() {
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var factSheet = ss.getSheetByName(SHEET.FACT_DELIVERY);
-  if (!factSheet || factSheet.getLastRow() < 2) return 0;
+  try {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var factSheet = ss.getSheetByName(SHEET.FACT_DELIVERY);
+    if (!factSheet || factSheet.getLastRow() < 2) return 0;
 
   var schemaLen = SCHEMA[SHEET.FACT_DELIVERY].length;
   var data = factSheet.getRange(2, 1, factSheet.getLastRow() - 1, schemaLen).getValues();
@@ -668,7 +679,17 @@ function populateAliasFromFactDelivery_() {
   });
 
   var aliasCount = 0;
+  var startedAt = Date.now();
+  var timeLimit = Number(AI_CONFIG && AI_CONFIG.TIME_LIMIT_MS) || 300000;
+  var softDeadline = startedAt + Math.max(60000, timeLimit - 20000);
+  function ensureTime_(idx) {
+    if (idx % 100 === 0 && Date.now() > softDeadline) {
+      throw new Error('populateAliasFromFactDelivery_ timeout guard at index=' + idx);
+    }
+  }
+  var idx = 0;
   for (var normKey in nameMap) {
+    ensureTime_(idx++);
     var info = nameMap[normKey];
 
     // ลอง Person ก่อน
@@ -691,8 +712,13 @@ function populateAliasFromFactDelivery_() {
     }
   }
 
-  logInfo('AliasService', 'populateAliasFromFactDelivery: ดึง ' + Object.keys(nameMap).length + ' ชื่อไม่ซ้ำ → สร้าง ' + aliasCount + ' alias ใหม่');
-  return aliasCount;
+    logInfo('AliasService', 'populateAliasFromFactDelivery: ดึง ' + Object.keys(nameMap).length + ' ชื่อไม่ซ้ำ → สร้าง ' + aliasCount + ' alias ใหม่');
+    return aliasCount;
+  } catch (err) {
+    logError('AliasService', `populateAliasFromFactDelivery_ ล้มเหลว: ${err.message}`);
+    SpreadsheetApp.getUi().alert(`❌ populateAliasFromFactDelivery_ ล้มเหลว: ${err.message}`);
+    return 0;
+  }
 }
 
 // ============================================================
