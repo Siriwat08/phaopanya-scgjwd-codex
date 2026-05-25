@@ -131,6 +131,8 @@ function onOpen() {
         .addSeparator()
         .addItem('🛡️ [PH2] Preflight Audit',      'runPreflightAudit')
         .addItem('🧹 [PH2] Detect Duplicates',     'detectDoubleProcessing')
+        .addItem('🧪 [PH1] Hardening Audit',       'runPhase1HardeningAudit')
+        .addItem('🚦 [PH2] Quality Gate',          'runPhase2QualityGate')
         .addItem('✅ ตรวจสอบ System Integrity',   'checkSystemIntegrity')
         .addItem('🔍 วินิจฉัย Pipeline (Diagnostic)', 'diagnoseSystemState')
         .addSeparator()
@@ -142,6 +144,15 @@ function onOpen() {
     )
 
     .addToUi();
+}
+
+/**
+ * autoInstallSmartNav_
+ * [ADD v5.4.002] กัน Phantom Function Call และรองรับการติดตั้งจริงในอนาคต
+ */
+function autoInstallSmartNav_() {
+  // no-op: intentionally left blank
+  return false;
 }
 
 // ============================================================
@@ -196,28 +207,33 @@ function onEdit(e) {
  * Installable Trigger มีสิทธิ์เต็มรูปแบบ รวมถึง UI dialog
  */
 function installSmartNavTrigger() {
-  // ลบ Smart Nav trigger เก่าก่อน (ถ้ามี)
-  const triggers = ScriptApp.getProjectTriggers();
-  let deletedCount = 0;
-  for (const t of triggers) {
-    if (t.getHandlerFunction() === 'handleSelectionChange_') {
-      ScriptApp.deleteTrigger(t);
-      deletedCount++;
+  try {
+    // ลบ Smart Nav trigger เก่าก่อน (ถ้ามี)
+    const triggers = ScriptApp.getProjectTriggers();
+    let deletedCount = 0;
+    for (const t of triggers) {
+      if (t.getHandlerFunction() === 'handleSelectionChange_') {
+        ScriptApp.deleteTrigger(t);
+        deletedCount++;
+      }
     }
+
+    // ติดตั้งใหม่
+    ScriptApp.newTrigger('handleSelectionChange_')
+      .forSpreadsheet(SpreadsheetApp.getActive())
+      .onSelectionChange()
+      .create();
+
+    SpreadsheetApp.getUi().alert(
+      '✅ ติดตั้ง Smart Navigation สำเร็จ!\n\n' +
+      (deletedCount > 0 ? `(ลบ Trigger เก่า ${deletedCount} ตัว)\n\n` : '') +
+      'วิธีใช้: ไปที่ชีต Q_REVIEW แล้วคลิกที่ช่อง Candidate ID (คอลัมน์ L-O)\n' +
+      'ระบบจะถามว่าต้องการนำทางไปตารางหลัก (Master) หรือ ประวัติขนส่ง (FACT)'
+    );
+  } catch (err) {
+    logError('App', `installSmartNavTrigger ล้มเหลว: ${err.message}`);
+    SpreadsheetApp.getUi().alert(`❌ installSmartNavTrigger ล้มเหลว: ${err.message}`);
   }
-
-  // ติดตั้งใหม่
-  ScriptApp.newTrigger('handleSelectionChange_')
-    .forSpreadsheet(SpreadsheetApp.getActive())
-    .onSelectionChange()
-    .create();
-
-  SpreadsheetApp.getUi().alert(
-    '✅ ติดตั้ง Smart Navigation สำเร็จ!\n\n' +
-    (deletedCount > 0 ? `(ลบ Trigger เก่า ${deletedCount} ตัว)\n\n` : '') +
-    'วิธีใช้: ไปที่ชีต Q_REVIEW แล้วคลิกที่ช่อง Candidate ID (คอลัมน์ L-O)\n' +
-    'ระบบจะถามว่าต้องการนำทางไปตารางหลัก (Master) หรือ ประวัติขนส่ง (FACT)'
-  );
 }
 
 /**

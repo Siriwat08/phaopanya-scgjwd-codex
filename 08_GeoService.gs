@@ -299,12 +299,16 @@ function updateGeoStats(geoId) {
       return;
     }
 
-    const lastSeenCol   = GEO_IDX.LAST_SEEN   + 1;
-    const usageCountCol = GEO_IDX.USAGE_COUNT  + 1;
-
-    sheet.getRange(targetRow, lastSeenCol).setValue(new Date());
-    const curr = Number(sheet.getRange(targetRow, usageCountCol).getValue()) || 0;
-    sheet.getRange(targetRow, usageCountCol).setValue(curr + 1);
+    const lastSeenCol   = GEO_IDX.LAST_SEEN + 1;
+    const usageCountCol = GEO_IDX.USAGE_COUNT + 1;
+    const startCol = Math.min(lastSeenCol, usageCountCol);
+    const width = Math.abs(lastSeenCol - usageCountCol) + 1;
+    const rowVals = sheet.getRange(targetRow, startCol, 1, width).getValues()[0];
+    const lastSeenOffset = lastSeenCol - startCol;
+    const usageOffset = usageCountCol - startCol;
+    rowVals[lastSeenOffset] = new Date();
+    rowVals[usageOffset] = (Number(rowVals[usageOffset]) || 0) + 1;
+    sheet.getRange(targetRow, startCol, 1, width).setValues([rowVals]);
     invalidateGeoCache_();
 
   } catch (err) {
