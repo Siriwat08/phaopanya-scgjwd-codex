@@ -395,8 +395,9 @@ function convertPlaceIdToUuid(placeId) {
  * ควรรันหลังจาก setup sheets หรือก่อน migration
  */
 function assignMasterUuidIfMissing() {
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var fixedTotal = 0;
+  try {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var fixedTotal = 0;
 
   [SHEET.M_PERSON, SHEET.M_PLACE].forEach(function(sheetName) {
     var sheet = ss.getSheetByName(sheetName);
@@ -436,7 +437,12 @@ function assignMasterUuidIfMissing() {
     invalidateAllGlobalCaches();
   }
 
-  return fixedTotal;
+    return fixedTotal;
+  } catch (err) {
+    logError('AliasService', `assignMasterUuidIfMissing ล้มเหลว: ${err.message}`);
+    SpreadsheetApp.getUi().alert(`❌ assignMasterUuidIfMissing ล้มเหลว: ${err.message}`);
+    return 0;
+  }
 }
 
 // ============================================================
@@ -573,8 +579,9 @@ function MIGRATION_HybridAliasSystem() {
  * @return {number} จำนวน alias ที่สร้างใหม่
  */
 function populateAliasFromSCGRawData_() {
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var sourceSheet = ss.getSheetByName(SHEET.SOURCE);
+  try {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var sourceSheet = ss.getSheetByName(SHEET.SOURCE);
   if (!sourceSheet || sourceSheet.getLastRow() < 2) {
     logWarn('AliasService', 'ชีต SCG ดิบ ว่างอยู่ — ข้ามการดึงข้อมูล');
     return 0;
@@ -657,7 +664,12 @@ function populateAliasFromSCGRawData_() {
   }
 
   logInfo('AliasService', 'populateAliasFromSCGRawData: ดึง ' + Object.keys(nameCount).length + ' ชื่อไม่ซ้ำ → สร้าง ' + aliasCount + ' alias ใหม่');
-  return aliasCount;
+    return aliasCount;
+  } catch (err) {
+    logError('AliasService', `populateAliasFromSCGRawData_ ล้มเหลว: ${err.message}`);
+    SpreadsheetApp.getUi().alert(`❌ populateAliasFromSCGRawData_ ล้มเหลว: ${err.message}`);
+    return 0;
+  }
 }
 
 // ============================================================
