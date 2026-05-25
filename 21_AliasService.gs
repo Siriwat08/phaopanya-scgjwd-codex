@@ -94,45 +94,10 @@
  * @return {string|null} aliasId หรือ null ถ้าซ้ำ
  */
 function createGlobalAlias(masterUuid, variantName, entityType, confidence, source) {
-  if (!masterUuid || !variantName || !entityType) return null;
-  const cleanVariant = normalizeForCompare(variantName);
-  if (!cleanVariant || cleanVariant.length < 2) return null;
-
-  // ตรวจสอบ duplicate ใน RAM cache ก่อน (เร็วกว่าอ่านชีต)
-  const existingMap = loadGlobalAliasesMap_();
-  const uidKey = entityType + '_' + masterUuid;
-  if (existingMap[uidKey] && existingMap[uidKey].includes(cleanVariant)) {
-    return null; // มีอยู่แล้ว ข้าม
-  }
-
-  // เขียนลง M_ALIAS sheet
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const sheet = ss.getSheetByName(SHEET.M_ALIAS);
-  if (!sheet) return null;
-
-  const aliasId = generateShortId('A');
-  const now = new Date();
-  sheet.appendRow([
-    aliasId,
-    masterUuid,
-    variantName,           // เก็บชื่อดิบไว้ (ยังไม่ normalize)
-    entityType,
-    confidence || 100,
-    source || 'MANUAL',
-    now,
-    true
-  ]);
-
-  // [REMOVED v5.4.001] ไม่เรียก syncAliasToEntityTable_() อีกต่อไป
-  // เพื่อป้องกัน circular dependency (createGlobalAlias → sync → createPersonAlias → createGlobalAlias)
-  // M_PERSON_ALIAS / M_PLACE_ALIAS เขียนที่ autoEnrichAliasesFromFactBatch_() เท่านั้น
-
-  // ล้าง Cache เพื่อให้การค้นหาครั้งถัดไปเห็นข้อมูลใหม่
-  CacheService.getScriptCache().remove('M_GLOBAL_ALIAS_ALL');
-  CacheService.getScriptCache().remove('M_GLOBAL_ALIAS_REVERSE');
-
-  logDebug('AliasService', `createGlobalAlias: ${aliasId} [${entityType}] "${variantName}" → ${masterUuid.substring(0, 8)}... (${source})`);
-  return aliasId;
+  // [ENFORCE v5.4.003] Single Writer Policy:
+  // ห้ามเขียน M_ALIAS จากฟังก์ชันนี้ ให้เขียนได้เฉพาะ autoEnrichAliasesFromFactBatch_() เท่านั้น
+  logWarn('AliasService', `BLOCKED createGlobalAlias by Single Writer policy: ${source || 'UNKNOWN_SOURCE'}`);
+  return null;
 }
 
 // ============================================================
