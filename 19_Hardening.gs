@@ -237,6 +237,85 @@ function runPhase1HardeningAudit() {
 }
 
 /**
+ * runPhase2QualityGate — Quality Gate ก่อน Production
+ * ตรวจ Critical/High ตาม checklist:
+ *  - Phantom calls (autoInstallSmartNav_ ต้องมีจริง)
+ *  - Duplicate function collision ที่เคยเกิด (geo loader)
+ *  - Single Writer protection (ห้าม fetchDataFromSCGJWD เรียก populateAliasFromSCGRawData_ โดยตรง)
+ *  - Time guard ใน migration
+ */
+function runPhase2QualityGate() {
+  try {
+    const ui = SpreadsheetApp.getUi();
+    const checks = [];
+    let pass = 0;
+    let fail = 0;
+
+    function record_(ok, label, detail) {
+      checks.push(`${ok ? '✅' : '❌'} ${label}${detail ? ' — ' + detail : ''}`);
+      if (ok) pass++; else fail++;
+    }
+
+    // C1: Phantom function
+    record_(
+      typeof this.autoInstallSmartNav_ === 'function',
+      'Phantom Call Guard',
+      'autoInstallSmartNav_ ต้องมี definition'
+    );
+
+    // C2: Duplicate function collision protection
+    record_(
+      typeof this.loadCachedGeoRowsForPlace_ === 'function',
+      'Scoped Geo Loader',
+      'loadCachedGeoRowsForPlace_ ต้องมีใน PlaceService'
+    );
+    record_(
+      typeof this.loadCachedGeoRows_ === 'function',
+      'Geo Dictionary Loader',
+      'loadCachedGeoRows_ ต้องมีใน GeoDictionaryBuilder'
+    );
+
+    // C3: Single Writer protection — runtime function source scan
+    let singleWriterProtected = true;
+    try {
+      const src = String(this.fetchDataFromSCGJWD || '');
+      singleWriterProtected = src.indexOf('populateAliasFromSCGRawData_(') === -1;
+    } catch (_) {}
+    record_(
+      singleWriterProtected,
+      'Single Writer (Group2 ingest)',
+      'fetchDataFromSCGJWD ไม่ควรเรียก populateAliasFromSCGRawData_ อัตโนมัติ'
+    );
+
+    // C4: Migration time guard
+    let hasTimeGuard = false;
+    try {
+      const migSrc = String(this.MIGRATION_HybridAliasSystem || '');
+      hasTimeGuard = /ensureTime_\(/.test(migSrc) && /TIME_LIMIT_MS/.test(migSrc);
+    } catch (_) {}
+    record_(
+      hasTimeGuard,
+      'Migration Time Guard',
+      'MIGRATION_HybridAliasSystem ต้องมี ensureTime_ + TIME_LIMIT_MS'
+    );
+
+    const total = pass + fail;
+    const pct = total > 0 ? Math.round((pass / total) * 100) : 0;
+    const summary =
+      `Phase 2 — Quality Gate\n\n` +
+      checks.join('\n') +
+      `\n\nสรุป: ${pass}/${total} ผ่าน (${pct}%)` +
+      (fail === 0 ? `\n\n✅ พร้อม Deploy` : `\n\n❌ ต้องแก้ก่อน Deploy: ${fail} รายการ`);
+
+    ui.alert(summary);
+    logInfo('Hardening', `runPhase2QualityGate: ${pass}/${total} ผ่าน`);
+  } catch (err) {
+    logError('Hardening', `runPhase2QualityGate ล้มเหลว: ${err.message}`);
+    SpreadsheetApp.getUi().alert(`❌ runPhase2QualityGate ล้มเหลว: ${err.message}`);
+  }
+}
+
+/**
  * generatePersonAliasesFromHistory — [UPGRADE v5.2.010] สร้าง Alias อัตโนมัติจากประวัติ FACT_DELIVERY
  * [FIX v5.4.000] เพิ่มการเขียน Global Alias ลง M_ALIAS ควบคู่กับ M_PERSON_ALIAS
  */

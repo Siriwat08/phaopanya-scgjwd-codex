@@ -132,6 +132,7 @@ function onOpen() {
         .addItem('🛡️ [PH2] Preflight Audit',      'runPreflightAudit')
         .addItem('🧹 [PH2] Detect Duplicates',     'detectDoubleProcessing')
         .addItem('🧪 [PH1] Hardening Audit',       'runPhase1HardeningAudit')
+        .addItem('🚦 [PH2] Quality Gate',          'runPhase2QualityGate')
         .addItem('✅ ตรวจสอบ System Integrity',   'checkSystemIntegrity')
         .addItem('🔍 วินิจฉัย Pipeline (Diagnostic)', 'diagnoseSystemState')
         .addSeparator()
