@@ -131,6 +131,8 @@ function onOpen() {
         .addSeparator()
         .addItem('🛡️ [PH2] Preflight Audit',      'runPreflightAudit')
         .addItem('🧹 [PH2] Detect Duplicates',     'detectDoubleProcessing')
+        .addItem('🧪 [PH1] Hardening Audit',       'runPhase1HardeningAudit')
+        .addItem('🚦 [PH2] Quality Gate',          'runPhase2QualityGate')
         .addItem('✅ ตรวจสอบ System Integrity',   'checkSystemIntegrity')
         .addItem('🔍 วินิจฉัย Pipeline (Diagnostic)', 'diagnoseSystemState')
         .addSeparator()
@@ -142,6 +144,15 @@ function onOpen() {
     )
 
     .addToUi();
+}
+
+/**
+ * autoInstallSmartNav_
+ * [ADD v5.4.002] กัน Phantom Function Call และรองรับการติดตั้งจริงในอนาคต
+ */
+function autoInstallSmartNav_() {
+  // no-op: intentionally left blank
+  return false;
 }
 
 // ============================================================

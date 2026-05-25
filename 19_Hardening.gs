@@ -71,9 +71,10 @@
  * runPreflightAudit — [MAIN] ตรวจสอบความพร้อมของระบบก่อนรัน Pipeline
  */
 function runPreflightAudit() {
-  const ui = SpreadsheetApp.getUi();
-  const logs = [];
-  let errorCount = 0;
+  try {
+    const ui = SpreadsheetApp.getUi();
+    const logs = [];
+    let errorCount = 0;
 
   logInfo('Hardening', 'เริ่มรัน Preflight Audit');
 
@@ -115,11 +116,15 @@ function runPreflightAudit() {
   }
 
   // Show Results
-  if (logs.length === 0) {
-    ui.alert('✅ Preflight Audit: ระบบพร้อมทำงาน 100%');
-  } else {
-    const report = logs.join('\n');
-    ui.alert(`📊 ผลการตรวจสอบ Preflight Audit:\n\n${report}\n\nพบจุดที่ควรตรวจสอบ ${logs.length} รายการ`);
+    if (logs.length === 0) {
+      ui.alert('✅ Preflight Audit: ระบบพร้อมทำงาน 100%');
+    } else {
+      const report = logs.join('\n');
+      ui.alert(`📊 ผลการตรวจสอบ Preflight Audit:\n\n${report}\n\nพบจุดที่ควรตรวจสอบ ${logs.length} รายการ`);
+    }
+  } catch (err) {
+    logError('Hardening', `runPreflightAudit ล้มเหลว: ${err.message}`);
+    SpreadsheetApp.getUi().alert(`❌ runPreflightAudit ล้มเหลว: ${err.message}`);
   }
 }
 
@@ -156,9 +161,10 @@ function fixMissingSyncStatus() {
  * detectDoubleProcessing — ตรวจสอบข้อมูลซ้ำใน FACT_DELIVERY
  */
 function detectDoubleProcessing() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const sheet = ss.getSheetByName(SHEET.FACT_DELIVERY);
-  if (!sheet || sheet.getLastRow() < 2) return;
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const sheet = ss.getSheetByName(SHEET.FACT_DELIVERY);
+    if (!sheet || sheet.getLastRow() < 2) return;
 
   const invoiceData = sheet.getRange(2, FACT_IDX.INVOICE_NO + 1, sheet.getLastRow() - 1, 1).getValues();
   const counts = {};
@@ -174,10 +180,138 @@ function detectDoubleProcessing() {
     if (counts[inv] > 1) duplicates.push(`${inv} (${counts[inv]} ครั้ง)`);
   });
 
-  if (duplicates.length === 0) {
-    SpreadsheetApp.getUi().alert('✅ ไม่พบข้อมูลซ้ำใน FACT_DELIVERY');
-  } else {
-    SpreadsheetApp.getUi().alert(`⚠️ พบ Invoice ซ้ำ ${duplicates.length} รายการ:\n\n${duplicates.slice(0, 10).join('\n')}${duplicates.length > 10 ? '\n...และอื่นๆ' : ''}`);
+    if (duplicates.length === 0) {
+      SpreadsheetApp.getUi().alert('✅ ไม่พบข้อมูลซ้ำใน FACT_DELIVERY');
+    } else {
+      SpreadsheetApp.getUi().alert(`⚠️ พบ Invoice ซ้ำ ${duplicates.length} รายการ:\n\n${duplicates.slice(0, 10).join('\n')}${duplicates.length > 10 ? '\n...และอื่นๆ' : ''}`);
+    }
+  } catch (err) {
+    logError('Hardening', `detectDoubleProcessing ล้มเหลว: ${err.message}`);
+    SpreadsheetApp.getUi().alert(`❌ detectDoubleProcessing ล้มเหลว: ${err.message}`);
+  }
+}
+
+/**
+ * runPhase1HardeningAudit — ตรวจ entry points สำคัญว่ามี try-catch และตรวจ duplicate name ที่เคยชน
+ */
+function runPhase1HardeningAudit() {
+  try {
+    const ui = SpreadsheetApp.getUi();
+    const findings = [];
+    const targets = [
+      'buildFullQualityReport',
+      'runPreflightAudit',
+      'detectDoubleProcessing',
+      'MIGRATION_HybridAliasSystem',
+      'fetchDataFromSCGJWD'
+    ];
+
+    targets.forEach(name => {
+      const fn = this[name];
+      if (typeof fn !== 'function') {
+        findings.push(`❌ ไม่พบ function: ${name}`);
+        return;
+      }
+      const src = String(fn);
+      if (!/try\s*\{/.test(src) || !/catch\s*\(/.test(src)) {
+        findings.push(`⚠️ ไม่มี try-catch ชัดเจน: ${name}`);
+      } else {
+        findings.push(`✅ มี try-catch: ${name}`);
+      }
+    });
+
+    const hasLegacyGeoLoader = (typeof this.loadCachedGeoRows_ === 'function');
+    const hasPlaceGeoLoader = (typeof this.loadCachedGeoRowsForPlace_ === 'function');
+    findings.push(hasPlaceGeoLoader
+      ? '✅ พบ loadCachedGeoRowsForPlace_ (Place scope)'
+      : '❌ ไม่พบ loadCachedGeoRowsForPlace_');
+    findings.push(hasLegacyGeoLoader
+      ? 'ℹ️ พบ loadCachedGeoRows_ (GeoDictionary scope)'
+      : '⚠️ ไม่พบ loadCachedGeoRows_');
+
+    ui.alert('Phase 1 Hardening Audit\n\n' + findings.join('\n'));
+  } catch (err) {
+    logError('Hardening', `runPhase1HardeningAudit ล้มเหลว: ${err.message}`);
+    SpreadsheetApp.getUi().alert(`❌ runPhase1HardeningAudit ล้มเหลว: ${err.message}`);
+  }
+}
+
+/**
+ * runPhase2QualityGate — Quality Gate ก่อน Production
+ * ตรวจ Critical/High ตาม checklist:
+ *  - Phantom calls (autoInstallSmartNav_ ต้องมีจริง)
+ *  - Duplicate function collision ที่เคยเกิด (geo loader)
+ *  - Single Writer protection (ห้าม fetchDataFromSCGJWD เรียก populateAliasFromSCGRawData_ โดยตรง)
+ *  - Time guard ใน migration
+ */
+function runPhase2QualityGate() {
+  try {
+    const ui = SpreadsheetApp.getUi();
+    const checks = [];
+    let pass = 0;
+    let fail = 0;
+
+    function record_(ok, label, detail) {
+      checks.push(`${ok ? '✅' : '❌'} ${label}${detail ? ' — ' + detail : ''}`);
+      if (ok) pass++; else fail++;
+    }
+
+    // C1: Phantom function
+    record_(
+      typeof this.autoInstallSmartNav_ === 'function',
+      'Phantom Call Guard',
+      'autoInstallSmartNav_ ต้องมี definition'
+    );
+
+    // C2: Duplicate function collision protection
+    record_(
+      typeof this.loadCachedGeoRowsForPlace_ === 'function',
+      'Scoped Geo Loader',
+      'loadCachedGeoRowsForPlace_ ต้องมีใน PlaceService'
+    );
+    record_(
+      typeof this.loadCachedGeoRows_ === 'function',
+      'Geo Dictionary Loader',
+      'loadCachedGeoRows_ ต้องมีใน GeoDictionaryBuilder'
+    );
+
+    // C3: Single Writer protection — runtime function source scan
+    let singleWriterProtected = true;
+    try {
+      const src = String(this.fetchDataFromSCGJWD || '');
+      singleWriterProtected = src.indexOf('populateAliasFromSCGRawData_(') === -1;
+    } catch (_) {}
+    record_(
+      singleWriterProtected,
+      'Single Writer (Group2 ingest)',
+      'fetchDataFromSCGJWD ไม่ควรเรียก populateAliasFromSCGRawData_ อัตโนมัติ'
+    );
+
+    // C4: Migration time guard
+    let hasTimeGuard = false;
+    try {
+      const migSrc = String(this.MIGRATION_HybridAliasSystem || '');
+      hasTimeGuard = /ensureTime_\(/.test(migSrc) && /TIME_LIMIT_MS/.test(migSrc);
+    } catch (_) {}
+    record_(
+      hasTimeGuard,
+      'Migration Time Guard',
+      'MIGRATION_HybridAliasSystem ต้องมี ensureTime_ + TIME_LIMIT_MS'
+    );
+
+    const total = pass + fail;
+    const pct = total > 0 ? Math.round((pass / total) * 100) : 0;
+    const summary =
+      `Phase 2 — Quality Gate\n\n` +
+      checks.join('\n') +
+      `\n\nสรุป: ${pass}/${total} ผ่าน (${pct}%)` +
+      (fail === 0 ? `\n\n✅ พร้อม Deploy` : `\n\n❌ ต้องแก้ก่อน Deploy: ${fail} รายการ`);
+
+    ui.alert(summary);
+    logInfo('Hardening', `runPhase2QualityGate: ${pass}/${total} ผ่าน`);
+  } catch (err) {
+    logError('Hardening', `runPhase2QualityGate ล้มเหลว: ${err.message}`);
+    SpreadsheetApp.getUi().alert(`❌ runPhase2QualityGate ล้มเหลว: ${err.message}`);
   }
 }
 
