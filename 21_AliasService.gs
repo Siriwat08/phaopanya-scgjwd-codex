@@ -465,6 +465,13 @@ function MIGRATION_HybridAliasSystem() {
 
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var startTime = new Date();
+  var deadlineMs = Number(AI_CONFIG && AI_CONFIG.TIME_LIMIT_MS) || 300000;
+  var softDeadline = startTime.getTime() + Math.max(60000, deadlineMs - 20000);
+  function ensureTime_(step, idx) {
+    if (Date.now() > softDeadline) {
+      throw new Error('Migration timeout guard at ' + step + ' (index=' + idx + ')');
+    }
+  }
 
   // Step 1: ตรวจสอบ master_uuid
   logInfo('AliasService', 'Step 1: ตรวจสอบ master_uuid...');
@@ -481,7 +488,8 @@ function MIGRATION_HybridAliasSystem() {
   var personAliasSheet = ss.getSheetByName(SHEET.M_PERSON_ALIAS);
   if (personAliasSheet && personAliasSheet.getLastRow() > 1) {
     var paData = personAliasSheet.getRange(2, 1, personAliasSheet.getLastRow() - 1, SCHEMA[SHEET.M_PERSON_ALIAS].length).getValues();
-    paData.forEach(function(r) {
+    paData.forEach(function(r, idx) {
+      if (idx % 100 === 0) ensureTime_('Step2:M_PERSON_ALIAS', idx);
       if (!r[PERSON_ALIAS_IDX.ACTIVE_FLAG]) return;
       var personId = String(r[PERSON_ALIAS_IDX.PERSON_ID] || '');
       var aliasName = String(r[PERSON_ALIAS_IDX.ALIAS_NAME] || '');
@@ -501,7 +509,8 @@ function MIGRATION_HybridAliasSystem() {
   var placeAliasSheet = ss.getSheetByName(SHEET.M_PLACE_ALIAS);
   if (placeAliasSheet && placeAliasSheet.getLastRow() > 1) {
     var plData = placeAliasSheet.getRange(2, 1, placeAliasSheet.getLastRow() - 1, SCHEMA[SHEET.M_PLACE_ALIAS].length).getValues();
-    plData.forEach(function(r) {
+    plData.forEach(function(r, idx) {
+      if (idx % 100 === 0) ensureTime_('Step3:M_PLACE_ALIAS', idx);
       if (!r[PLACE_ALIAS_IDX.ACTIVE_FLAG]) return;
       var placeId = String(r[PLACE_ALIAS_IDX.PLACE_ID] || '');
       var aliasName = String(r[PLACE_ALIAS_IDX.ALIAS_NAME] || '');
@@ -518,10 +527,12 @@ function MIGRATION_HybridAliasSystem() {
 
   // Step 4: ดึงชื่อปลายทางจากชีต SCG ดิบ → M_ALIAS
   logInfo('AliasService', 'Step 4: ดึงชื่อจากชีต SCG ดิบ → M_ALIAS...');
+  ensureTime_('Step4:SCG_RAW', 0);
   var scgCount = populateAliasFromSCGRawData_();
 
   // Step 5: ดึงชื่อจาก FACT_DELIVERY → M_ALIAS
   logInfo('AliasService', 'Step 5: ดึงชื่อจาก FACT_DELIVERY → M_ALIAS...');
+  ensureTime_('Step5:FACT', 0);
   var factCount = populateAliasFromFactDelivery_();
 
   var elapsedSec = Math.round((new Date() - startTime) / 1000);
